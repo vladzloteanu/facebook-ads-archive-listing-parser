@@ -1,34 +1,158 @@
 // Apify SDK - toolkit for building Apify Actors (Read more at https://docs.apify.com/sdk/js/)
 import { Actor } from 'apify';
 // Crawlee - web scraping and browser automation library (Read more at https://crawlee.dev)
-import { CheerioCrawler, Dataset } from 'crawlee';
+import { CheerioCrawler, log } from 'crawlee';
+import { router } from './routes.js';
 
-// The init() call configures the Actor for its environment. It's recommended to start every Actor with an init()
+// Initialize the Actor environment
+// This configures logging, storage, and other Actor-specific features
 await Actor.init();
 
-// Structure of input is defined in input_schema.json
-const { startUrls = ['https://apify.com'], maxRequestsPerCrawl = 100 } = (await Actor.getInput()) ?? {};
+/**
+ * Main Actor execution
+ *
+ * This Actor crawls Facebook Ads Archive URLs and extracts:
+ * - Ad ID
+ * - Advertiser information
+ * - Ad creative (image/video URLs)
+ * - Call-to-action URLs
+ * - Ad text/copy
+ * - Library ID
+ */
 
-// Proxy configuration to rotate IP addresses and prevent blocking (https://docs.apify.com/platform/proxy)
+// Get and validate input
+const input = await Actor.getInput();
+
+// Validate that input exists
+if (!input) {
+    log.error('No input provided!');
+    throw new Error('Input is required. Please provide startUrls and other configuration.');
+}
+
+// Extract configuration with defaults
+const {
+    startUrls = [],
+    maxConcurrency = 5,
+    requestTimeout = 30000,
+} = input;
+
+// Validate startUrls
+if (!Array.isArray(startUrls) || startUrls.length === 0) {
+    log.error('startUrls must be a non-empty array');
+    throw new Error('startUrls is required and must contain at least one URL');
+}
+
+log.info('Actor configuration', {
+    urlCount: startUrls.length,
+    maxConcurrency,
+    requestTimeout,
+});
+
+// Validate URL format for each URL
+for (const url of startUrls) {
+    if (!url.includes('facebook.com/ads/archive/render_ad/')) {
+        log.warning(`Invalid URL format: ${url}`);
+        log.warning('Expected format: https://www.facebook.com/ads/archive/render_ad/?id=XXXXX&access_token=XXXXX');
+    }
+}
+
+// Configure proxy to avoid rate limiting and blocking
+// Facebook may block requests without proper proxy rotation
 const proxyConfiguration = await Actor.createProxyConfiguration();
 
+log.info('Proxy configuration created', {
+    proxyUrl: proxyConfiguration ? 'enabled' : 'disabled',
+});
+
+/**
+ * Initialize the CheerioCrawler
+ *
+ * CheerioCrawler is faster than Playwright/Puppeteer for static content
+ * as it doesn't require a full browser instance
+ */
 const crawler = new CheerioCrawler({
+    // Use proxy to rotate IPs and avoid blocking
     proxyConfiguration,
-    maxRequestsPerCrawl,
-    async requestHandler({ enqueueLinks, request, $, log }) {
-        log.info('enqueueing new URLs');
-        await enqueueLinks();
 
-        // Extract title from the page.
-        const title = $('title').text();
-        log.info(`${title}`, { url: request.loadedUrl });
+    // Maximum number of concurrent requests
+    // Higher = faster but more resource intensive
+    maxConcurrency,
 
-        // Save url and title to Dataset - a table-like storage.
-        await Dataset.pushData({ url: request.loadedUrl, title });
+    // Timeout for each request in milliseconds
+    requestHandlerTimeoutSecs: requestTimeout / 1000,
+
+    // Use the router defined in routes.js
+    requestHandler: router,
+
+    // Retry failed requests up to 3 times with exponential backoff
+    maxRequestRetries: 3,
+
+    // Custom error handler for better logging
+    failedRequestHandler: async ({ request, error }, context) => {
+        log.error(`Request failed after ${request.retryCount} retries`, {
+            url: request.url,
+            error: error.message,
+            adId: request.url.match(/id=(\d+)/)?.[1],
+        });
+
+        // Save failed URLs for later analysis
+        await Actor.pushData({
+            status: 'FAILED',
+            url: request.url,
+            error: error.message,
+            retryCount: request.retryCount,
+            timestamp: new Date().toISOString(),
+        });
     },
 });
 
-await crawler.run(startUrls);
+// Log crawler statistics periodically
+let processedCount = 0;
+const startTime = Date.now();
 
-// Gracefully exit the Actor process. It's recommended to quit all Actors with an exit()
+log.info('Starting crawler...', {
+    totalUrls: startUrls.length,
+    startTime: new Date(startTime).toISOString(),
+});
+
+/**
+ * Run the crawler with all start URLs
+ *
+ * The crawler will:
+ * 1. Fetch each URL with proxy rotation
+ * 2. Parse the HTML with Cheerio
+ * 3. Extract ad data using routes.js
+ * 4. Save results to Dataset
+ * 5. Handle errors and retries automatically
+ */
+try {
+    await crawler.run(startUrls);
+
+    const endTime = Date.now();
+    const duration = (endTime - startTime) / 1000;
+
+    log.info('Crawler finished successfully', {
+        totalUrls: startUrls.length,
+        duration: `${duration.toFixed(2)}s`,
+        avgTimePerUrl: `${(duration / startUrls.length).toFixed(2)}s`,
+        endTime: new Date(endTime).toISOString(),
+    });
+} catch (error) {
+    log.error('Crawler failed with error', {
+        error: error.message,
+        stack: error.stack,
+    });
+    throw error;
+}
+
+// Get final statistics from the crawler
+const stats = await crawler.stats.state;
+log.info('Final crawler statistics', {
+    requestsFinished: stats.requestsFinished,
+    requestsFailed: stats.requestsFailed,
+    retryHistogram: stats.retryHistogram,
+});
+
+// Gracefully exit the Actor
+// This ensures all data is saved and resources are cleaned up
 await Actor.exit();
