@@ -7,13 +7,12 @@
       "title": "Start URLs",
       "type": "array",
       "description": "List of Facebook Ads Archive URLs to crawl. Each URL should be in the format: https://www.facebook.com/ads/archive/render_ad/?id=XXXXXXXXX&access_token=XXXXX",
-      "editor": "requestListSources",
+      "editor": "stringList",
       "items": {
-        "type": "string",
-        "pattern": "^https://www\\.facebook\\.com/ads/archive/render_ad/\\?id=\\d+&access_token=.+$"
+        "type": "string"
       },
       "prefill": [
-        "https://www.facebook.com/ads/archive/render_ad/?id=2500687420313026&access_token=EAALQdhYSGfcBPZCRsiTKpNPGUZB7F73wee2Kx11CmeFszEcXLoFLMP1S4czDTU6h2ZABaPdSWCZCOTZB7FGAJwHqodFvrtwTBAi4lEHjXDUEC6VZBziC6mqS2oKFuEaLzmX95wycC4GmSz8irsTeipUnuraH4pUVOajB5yIjMb4jpPHrsiwJlYCLYlsgZDZD"
+        "https://www.facebook.com/ads/archive/render_ad/?id=2500687420313026&access_token=EAALQdhYSGfcBPZCRsiTKpNPGUZB7F73wee2Kx11CmeFszEcXLoFLMP1S4czDTU6h2ZABaPdSWCZCOTZB7F73wee2Kx11CmeFszEcXLoFLMP1S4czDTU6h2ZABaPdSWCZCOTZB7FGAJwHqodFvrtwTBAi4lEHjXDUEC6VZBziC6mqS2oKFuEaLzmX95wycC4GmSz8irsTeipUnuraH4pUVOajB5yIjMb4jpPHrsiwJlYCLYlsgZDZD"
       ]
     },
     "maxConcurrency": {
