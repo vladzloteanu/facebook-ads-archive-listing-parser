@@ -1,0 +1,56 @@
+{
+  "actorSpecification": 1,
+  "name": "facebook-ads-archive-crawler",
+  "version": "1.0.0",
+  "buildTag": "latest",
+  "environmentVariables": {},
+  "dockerfile": "./Dockerfile",
+  "readme": "./README.md",
+  "input": "./.actor/input_schema.json",
+  "storages": {
+    "dataset": {
+      "actorSpecification": 1,
+      "title": "Facebook Ads Data",
+      "views": {
+        "overview": {
+          "title": "Overview",
+          "transformation": {
+            "fields": [
+              "ad_id",
+              "advertiser_name",
+              "ad_type",
+              "creative_url",
+              "cta_url",
+              "library_id"
+            ]
+          },
+          "display": {
+            "component": "table",
+            "properties": {
+              "ad_id": {
+                "label": "Ad ID",
+                "format": "text"
+              },
+              "advertiser_name": {
+                "label": "Advertiser",
+                "format": "text"
+              },
+              "ad_type": {
+                "label": "Type",
+                "format": "text"
+              },
+              "creative_url": {
+                "label": "Creative URL",
+                "format": "link"
+              },
+              "cta_url": {
+                "label": "CTA URL",
+                "format": "link"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

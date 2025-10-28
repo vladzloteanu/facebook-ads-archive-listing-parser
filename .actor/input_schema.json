@@ -1,0 +1,39 @@
+{
+  "title": "Facebook Ads Archive Crawler Input",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "startUrls": {
+      "title": "Start URLs",
+      "type": "array",
+      "description": "List of Facebook Ads Archive URLs to crawl. Each URL should be in the format: https://www.facebook.com/ads/archive/render_ad/?id=XXXXXXXXX&access_token=XXXXX",
+      "editor": "requestListSources",
+      "items": {
+        "type": "string",
+        "pattern": "^https://www\\.facebook\\.com/ads/archive/render_ad/\\?id=\\d+&access_token=.+$"
+      },
+      "prefill": [
+        "https://www.facebook.com/ads/archive/render_ad/?id=2500687420313026&access_token=EAALQdhYSGfcBPZCRsiTKpNPGUZB7F73wee2Kx11CmeFszEcXLoFLMP1S4czDTU6h2ZABaPdSWCZCOTZB7FGAJwHqodFvrtwTBAi4lEHjXDUEC6VZBziC6mqS2oKFuEaLzmX95wycC4GmSz8irsTeipUnuraH4pUVOajB5yIjMb4jpPHrsiwJlYCLYlsgZDZD"
+      ]
+    },
+    "maxConcurrency": {
+      "title": "Max Concurrency",
+      "type": "integer",
+      "description": "Maximum number of concurrent requests. Higher values = faster crawling but more resource usage.",
+      "default": 5,
+      "minimum": 1,
+      "maximum": 50,
+      "unit": "requests"
+    },
+    "requestTimeout": {
+      "title": "Request Timeout",
+      "type": "integer",
+      "description": "Timeout for each request in milliseconds.",
+      "default": 30000,
+      "minimum": 5000,
+      "maximum": 120000,
+      "unit": "milliseconds"
+    }
+  },
+  "required": ["startUrls"]
+}

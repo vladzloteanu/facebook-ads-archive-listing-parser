@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Apify storage
+storage/
+apify_storage/
+
+# Development files
+.git/
+.gitignore
+.DS_Store
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# Test files
+test/
+tests/
+*.test.js
+*.spec.js
+
+# Documentation (excluding README which is needed)
+docs/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+tmp/
+temp/
+.tmp/
