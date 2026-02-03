@@ -42,6 +42,14 @@ router.addDefaultHandler(async ({ request, $, log: requestLog }) => {
         // Facebook's ads archive includes JSON data in the HTML
         const bodyHtml = $('body').html() || '';
 
+        // DEBUG: Log HTML structure info
+        requestLog.info(`DEBUG: HTML length: ${bodyHtml.length} chars`);
+        requestLog.info(`DEBUG: video elements found: ${$('video').length}`);
+        requestLog.info(`DEBUG: img elements found: ${$('img').length}`);
+        requestLog.info(`DEBUG: img[src*="fbcdn"] elements: ${$('img[src*="fbcdn"]').length}`);
+        requestLog.info(`DEBUG: a[data-lynx-mode="hover"] elements: ${$('a[data-lynx-mode="hover"]').length}`);
+        requestLog.info(`DEBUG: [data-testid] elements: ${$('[data-testid]').length}`);
+
         // Extract advertiser name
         // Look for text patterns that indicate advertiser
         const advertiserName = $('a[href*="facebook.com/"] span').first().text().trim();
@@ -92,35 +100,39 @@ router.addDefaultHandler(async ({ request, $, log: requestLog }) => {
         // Pattern 0a: Look for video src attribute directly (Facebook's current format as of Feb 2026)
         // The video URL is now directly in the <video src="..."> attribute
         const videoSrc = $('video').first().attr('src');
+        requestLog.info(`DEBUG Pattern 0a: video src = ${videoSrc ? videoSrc.substring(0, 100) : 'null'}`);
         if (videoSrc && videoSrc.includes('fbcdn')) {
             result.creative_url = videoSrc;
             result.ad_type = 'video';
-            requestLog.info(`Found video creative (src attr): ${result.creative_url}`);
+            requestLog.info(`Found video creative (src attr): ${result.creative_url.substring(0, 100)}...`);
         }
 
         // Pattern 0b: Look for img inside clickable ad link (data-lynx-mode="hover")
         // This is Facebook's current format for image ads as of Feb 2026
         if (!result.creative_url) {
             const adLinkImg = $('a[data-lynx-mode="hover"] img[src*="fbcdn"]').first().attr('src');
+            requestLog.info(`DEBUG Pattern 0b: lynx-mode img = ${adLinkImg ? adLinkImg.substring(0, 100) : 'null'}`);
             if (adLinkImg && !adLinkImg.includes('60x60')) {
                 result.creative_url = adLinkImg;
                 result.ad_type = 'image';
-                requestLog.info(`Found image creative (lynx-mode link): ${result.creative_url}`);
+                requestLog.info(`Found image creative (lynx-mode link): ${result.creative_url.substring(0, 100)}...`);
             }
         }
 
         // Pattern 0c: Look for img in ad content containers with data-testid
         if (!result.creative_url) {
             const adContentImg = $('[data-testid="ad-content-body-video-container"] img, [data-testid="ad-content-body-image-container"] img').first().attr('src');
+            requestLog.info(`DEBUG Pattern 0c: data-testid img = ${adContentImg ? adContentImg.substring(0, 100) : 'null'}`);
             if (adContentImg && adContentImg.includes('fbcdn') && !adContentImg.includes('60x60')) {
                 result.creative_url = adContentImg;
                 result.ad_type = 'image';
-                requestLog.info(`Found image creative (ad-content container): ${result.creative_url}`);
+                requestLog.info(`Found image creative (ad-content container): ${result.creative_url.substring(0, 100)}...`);
             }
         }
 
         // Pattern 1: Look for "resized_image_url" in JSON data (legacy format)
         const imageUrlMatches = bodyHtml.match(/"resized_image_url":"([^"]+)"/g);
+        requestLog.info(`DEBUG Pattern 1: resized_image_url matches = ${imageUrlMatches ? imageUrlMatches.length : 0}`);
         if (imageUrlMatches && imageUrlMatches.length > 0) {
             // Get the last match (usually the highest quality)
             const lastMatch = imageUrlMatches[imageUrlMatches.length - 1];
@@ -129,20 +141,21 @@ router.addDefaultHandler(async ({ request, $, log: requestLog }) => {
                 // Unescape the URL (remove backslashes)
                 result.creative_url = urlMatch[1].replace(/\\/g, '');
                 result.ad_type = 'image';
-                requestLog.info(`Found image creative: ${result.creative_url}`);
+                requestLog.info(`Found image creative (resized_image_url): ${result.creative_url.substring(0, 100)}...`);
             }
         }
 
         // Pattern 2: If no image, try video URLs
         if (!result.creative_url) {
             const videoUrlMatches = bodyHtml.match(/"video_hd_url":"([^"]+)"/g);
+            requestLog.info(`DEBUG Pattern 2: video_hd_url matches = ${videoUrlMatches ? videoUrlMatches.length : 0}`);
             if (videoUrlMatches && videoUrlMatches.length > 0) {
                 const lastMatch = videoUrlMatches[videoUrlMatches.length - 1];
                 const urlMatch = lastMatch.match(/"video_hd_url":"([^"]+)"/);
                 if (urlMatch) {
                     result.creative_url = urlMatch[1].replace(/\\/g, '');
                     result.ad_type = 'video';
-                    requestLog.info(`Found video creative: ${result.creative_url}`);
+                    requestLog.info(`Found video creative (video_hd_url): ${result.creative_url.substring(0, 100)}...`);
                 }
             }
         }
@@ -150,20 +163,22 @@ router.addDefaultHandler(async ({ request, $, log: requestLog }) => {
         // Pattern 3: Fallback to img src attribute
         if (!result.creative_url) {
             const imgSrc = $('img[src*="fbcdn"]').not('[src*="60x60"]').first().attr('src');
+            requestLog.info(`DEBUG Pattern 3: fallback img = ${imgSrc ? imgSrc.substring(0, 100) : 'null'}`);
             if (imgSrc) {
                 result.creative_url = imgSrc;
                 result.ad_type = 'image';
-                requestLog.info(`Found image creative (fallback): ${result.creative_url}`);
+                requestLog.info(`Found image creative (fallback): ${result.creative_url.substring(0, 100)}...`);
             }
         }
 
         // Pattern 4: Check for video poster
         if (!result.creative_url) {
             const videoPoster = $('video').first().attr('poster');
+            requestLog.info(`DEBUG Pattern 4: video poster = ${videoPoster ? videoPoster.substring(0, 100) : 'null'}`);
             if (videoPoster) {
                 result.creative_url = videoPoster;
                 result.ad_type = 'video_thumbnail';
-                requestLog.info(`Found video poster: ${result.creative_url}`);
+                requestLog.info(`Found video poster: ${result.creative_url.substring(0, 100)}...`);
             }
         }
 
@@ -172,6 +187,8 @@ router.addDefaultHandler(async ({ request, $, log: requestLog }) => {
             requestLog.warning('Could not extract creative URL (image/video)');
             result.creative_url = null;
             result.ad_type = 'unknown';
+            // Log first 500 chars of body to see what we got
+            requestLog.info(`DEBUG: First 500 chars of body: ${bodyHtml.substring(0, 500)}`);
         }
 
         // Extract CTA (Call-to-Action) URL / destination link
