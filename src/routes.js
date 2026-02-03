@@ -89,7 +89,27 @@ router.addDefaultHandler(async ({ request, $, log: requestLog }) => {
         // Extract creative URL (image or video)
         // Try multiple patterns as Facebook uses different formats
 
-        // Pattern 1: Look for "resized_image_url" in JSON data
+        // Pattern 0a: Look for video src attribute directly (Facebook's current format as of Feb 2026)
+        // The video URL is now directly in the <video src="..."> attribute
+        const videoSrc = $('video').first().attr('src');
+        if (videoSrc && videoSrc.includes('fbcdn')) {
+            result.creative_url = videoSrc;
+            result.ad_type = 'video';
+            requestLog.info(`Found video creative (src attr): ${result.creative_url}`);
+        }
+
+        // Pattern 0b: Look for img src in the ad content area (not the 60x60 avatar)
+        // Uses data-testid attribute that Facebook uses for ad content containers
+        if (!result.creative_url) {
+            const adContentImg = $('[data-testid="ad-content-body-video-container"] img, [data-testid="ad-content-body-image-container"] img, .x14ju556 img').first().attr('src');
+            if (adContentImg && adContentImg.includes('fbcdn') && !adContentImg.includes('60x60')) {
+                result.creative_url = adContentImg;
+                result.ad_type = 'image';
+                requestLog.info(`Found image creative (ad-content container): ${result.creative_url}`);
+            }
+        }
+
+        // Pattern 1: Look for "resized_image_url" in JSON data (legacy format)
         const imageUrlMatches = bodyHtml.match(/"resized_image_url":"([^"]+)"/g);
         if (imageUrlMatches && imageUrlMatches.length > 0) {
             // Get the last match (usually the highest quality)
