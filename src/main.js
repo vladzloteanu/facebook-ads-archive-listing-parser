@@ -106,14 +106,14 @@ const crawlerOptions = {
             // Minimal viewport
             await page.setViewportSize({ width: 800, height: 600 });
 
-            // Aggressive resource blocking
+            // Resource blocking - allow media (videos) but block images, fonts, etc.
             await page.route('**/*', (route) => {
                 const request = route.request();
                 const resourceType = request.resourceType();
                 const url = request.url();
 
-                // Block everything except document, script, xhr, fetch
-                if (['image', 'stylesheet', 'font', 'media', 'websocket', 'manifest', 'other'].includes(resourceType)) {
+                // Block images, fonts, stylesheets - but NOT media (videos)
+                if (['image', 'stylesheet', 'font', 'websocket', 'manifest', 'other'].includes(resourceType)) {
                     return route.abort();
                 }
 

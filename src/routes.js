@@ -20,14 +20,28 @@ router.addDefaultHandler(async ({ request, page, log: requestLog }) => {
             result.ad_id = null;
         }
 
-        // Wait for content to load (optimized - shorter timeout)
+        // Wait for content to load
         try {
             await page.waitForSelector('video, img[src*="fbcdn"], [data-testid]', { timeout: 10000 });
         } catch (e) {
             requestLog.warning('Timeout waiting for content selector, proceeding anyway');
         }
 
-        // Short stabilization wait (reduced from 2000ms)
+        // Check if there's a video element - if so, wait a bit longer for it to load its src
+        const hasVideo = await page.$('video');
+        if (hasVideo) {
+            // Wait for video src to be populated (Facebook loads it lazily)
+            try {
+                await page.waitForFunction(() => {
+                    const video = document.querySelector('video');
+                    return video && (video.src || video.querySelector('source')?.src);
+                }, { timeout: 5000 });
+            } catch (e) {
+                requestLog.warning('Video src not populated in time, will try extraction anyway');
+            }
+        }
+
+        // Short stabilization wait
         await page.waitForTimeout(500);
 
         const bodyHtml = await page.content();
@@ -46,15 +60,54 @@ router.addDefaultHandler(async ({ request, page, log: requestLog }) => {
         result.library_id = libraryIdMatch ? libraryIdMatch[1] : null;
 
         // Extract creative URL
-        // Pattern 0a: video src
+        // Pattern 1: video src attribute
         const videoSrc = $('video').first().attr('src');
-        if (videoSrc && videoSrc.includes('fbcdn')) {
+        if (videoSrc && (videoSrc.includes('fbcdn') || videoSrc.includes('facebook'))) {
             result.creative_url = videoSrc;
             result.ad_type = 'video';
-            requestLog.info(`Found video creative: ${videoSrc.substring(0, 80)}...`);
+            requestLog.info(`Found video creative (src): ${videoSrc.substring(0, 80)}...`);
         }
 
-        // Pattern 0b: lynx-mode img
+        // Pattern 2: video source element
+        if (!result.creative_url) {
+            const videoSourceSrc = $('video source').first().attr('src');
+            if (videoSourceSrc && (videoSourceSrc.includes('fbcdn') || videoSourceSrc.includes('facebook'))) {
+                result.creative_url = videoSourceSrc;
+                result.ad_type = 'video';
+                requestLog.info(`Found video creative (source element): ${videoSourceSrc.substring(0, 80)}...`);
+            }
+        }
+
+        // Pattern 3: Try to extract video URL from page via JavaScript (for lazy-loaded videos)
+        if (!result.creative_url) {
+            const videoUrl = await page.evaluate(() => {
+                const video = document.querySelector('video');
+                if (video) {
+                    // Check direct src
+                    if (video.src && (video.src.includes('fbcdn') || video.src.includes('facebook'))) {
+                        return video.src;
+                    }
+                    // Check source element
+                    const source = video.querySelector('source');
+                    if (source?.src && (source.src.includes('fbcdn') || source.src.includes('facebook'))) {
+                        return source.src;
+                    }
+                    // Check currentSrc (resolved source)
+                    if (video.currentSrc && (video.currentSrc.includes('fbcdn') || video.currentSrc.includes('facebook'))) {
+                        return video.currentSrc;
+                    }
+                }
+                return null;
+            }).catch(() => null);
+
+            if (videoUrl) {
+                result.creative_url = videoUrl;
+                result.ad_type = 'video';
+                requestLog.info(`Found video creative (JS eval): ${videoUrl.substring(0, 80)}...`);
+            }
+        }
+
+        // Pattern 4: lynx-mode img
         if (!result.creative_url) {
             const adLinkImg = $('a[data-lynx-mode="hover"] img[src*="fbcdn"]').first().attr('src');
             if (adLinkImg && !adLinkImg.includes('60x60')) {
@@ -64,7 +117,7 @@ router.addDefaultHandler(async ({ request, page, log: requestLog }) => {
             }
         }
 
-        // Pattern 3: fallback img
+        // Pattern 5: fallback img
         if (!result.creative_url) {
             const imgSrc = $('img[src*="fbcdn"]').not('[src*="60x60"]').first().attr('src');
             if (imgSrc) {
@@ -74,12 +127,13 @@ router.addDefaultHandler(async ({ request, page, log: requestLog }) => {
             }
         }
 
-        // Pattern 4: video poster
+        // Pattern 6: video poster (last resort - at least get thumbnail)
         if (!result.creative_url) {
             const videoPoster = $('video').first().attr('poster');
             if (videoPoster) {
                 result.creative_url = videoPoster;
                 result.ad_type = 'video_thumbnail';
+                requestLog.info(`Found video poster: ${videoPoster.substring(0, 80)}...`);
             }
         }
 
