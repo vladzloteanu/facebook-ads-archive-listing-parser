@@ -1,8 +1,7 @@
 // Router for handling Facebook Ads Archive pages
-import { createPlaywrightRouter, Dataset, log } from 'crawlee';
-import * as cheerio from 'cheerio';
+import { createCheerioRouter, Dataset, log } from 'crawlee';
 
-export const router = createPlaywrightRouter();
+export const router = createCheerioRouter();
 
 /**
  * Default handler for Facebook Ads Archive URLs
@@ -16,7 +15,7 @@ export const router = createPlaywrightRouter();
  * - Library ID
  * - Sponsored status
  */
-router.addDefaultHandler(async ({ request, page, log: requestLog }) => {
+router.addDefaultHandler(async ({ request, $, log: requestLog }) => {
     requestLog.info(`Processing ad: ${request.url}`);
 
     // Initialize result object with basic information
@@ -39,26 +38,9 @@ router.addDefaultHandler(async ({ request, page, log: requestLog }) => {
             result.ad_id = null;
         }
 
-        // Wait for the page content to load
-        // Facebook loads content dynamically via JavaScript
-        requestLog.info('Waiting for page content to load...');
-
-        // Wait for either the video element, image, or a timeout
-        try {
-            await page.waitForSelector('video, img[src*="fbcdn"], [data-testid]', { timeout: 15000 });
-            requestLog.info('Content selector found');
-        } catch (e) {
-            requestLog.warning('Timeout waiting for content selector, proceeding anyway');
-        }
-
-        // Additional wait to ensure dynamic content is fully loaded
-        await page.waitForTimeout(2000);
-
-        // Get the full page HTML after JavaScript execution
-        const bodyHtml = await page.content();
-
-        // Load into Cheerio for easier parsing
-        const $ = cheerio.load(bodyHtml);
+        // Get the full page HTML for regex-based extraction
+        // Facebook's ads archive includes JSON data in the HTML
+        const bodyHtml = $('body').html() || '';
 
         // DEBUG: Log HTML structure info
         requestLog.info(`DEBUG: HTML length: ${bodyHtml.length} chars`);

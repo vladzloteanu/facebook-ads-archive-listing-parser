@@ -1,7 +1,6 @@
 # Specify the base Docker image. You can read more about
 # the available images at https://docs.apify.com/sdk/js/docs/guides/docker-images
-# Using Playwright image for browser-based crawling
-FROM apify/actor-node-playwright-chrome:22
+FROM apify/actor-node:22
 
 # Check preinstalled packages
 RUN npm ls crawlee apify puppeteer playwright

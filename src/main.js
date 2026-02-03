@@ -1,7 +1,7 @@
 // Apify SDK - toolkit for building Apify Actors (Read more at https://docs.apify.com/sdk/js/)
 import { Actor } from 'apify';
 // Crawlee - web scraping and browser automation library (Read more at https://crawlee.dev)
-import { PlaywrightCrawler, log } from 'crawlee';
+import { CheerioCrawler, log } from 'crawlee';
 import { router } from './routes.js';
 
 // Initialize the Actor environment
@@ -32,8 +32,8 @@ if (!input) {
 // Extract configuration with defaults
 const {
     startUrls = [],
-    maxConcurrency = 3,  // Lower default for browser-based crawling
-    requestTimeout = 60000,  // Longer timeout for JS rendering
+    maxConcurrency = 5,
+    requestTimeout = 30000,
 } = input;
 
 // Validate startUrls
@@ -56,27 +56,26 @@ for (const url of startUrls) {
     }
 }
 
-// Configure proxy to avoid rate limiting and blocking
-// Facebook may block requests without proper proxy rotation
+// Configure proxy with RESIDENTIAL proxies to avoid Facebook blocking
 const proxyConfiguration = await Actor.createProxyConfiguration({
     groups: ['RESIDENTIAL'],
 });
 
 log.info('Proxy configuration created', {
-    proxyUrl: proxyConfiguration ? 'enabled (residential)' : 'disabled',
+    proxyUrl: proxyConfiguration ? 'enabled (RESIDENTIAL)' : 'disabled',
 });
 
 /**
- * Initialize the PlaywrightCrawler
+ * Initialize the CheerioCrawler
  *
- * PlaywrightCrawler uses a real browser to execute JavaScript,
- * which is required for Facebook's dynamically rendered ad content
+ * CheerioCrawler is faster and cheaper than Playwright/Puppeteer
+ * Using residential proxies to avoid Facebook blocking
  */
-const crawler = new PlaywrightCrawler({
-    // Use proxy to rotate IPs and avoid blocking
+const crawler = new CheerioCrawler({
+    // Use RESIDENTIAL proxy to avoid blocking
     proxyConfiguration,
 
-    // Maximum number of concurrent browser pages
+    // Maximum number of concurrent requests
     maxConcurrency,
 
     // Timeout for each request in milliseconds
@@ -87,21 +86,6 @@ const crawler = new PlaywrightCrawler({
 
     // Retry failed requests up to 3 times with exponential backoff
     maxRequestRetries: 3,
-
-    // Browser launch options
-    launchContext: {
-        launchOptions: {
-            headless: true,
-        },
-    },
-
-    // Wait for content to load before processing
-    preNavigationHooks: [
-        async ({ page }) => {
-            // Set a realistic viewport
-            await page.setViewportSize({ width: 1280, height: 800 });
-        },
-    ],
 
     // Custom error handler for better logging
     failedRequestHandler: async ({ request, error }, context) => {
@@ -133,14 +117,6 @@ log.info('Starting crawler...', {
 
 /**
  * Run the crawler with all start URLs
- *
- * The crawler will:
- * 1. Fetch each URL with proxy rotation
- * 2. Wait for JavaScript to render the content
- * 3. Parse the HTML with Cheerio
- * 4. Extract ad data using routes.js
- * 5. Save results to Dataset
- * 6. Handle errors and retries automatically
  */
 try {
     await crawler.run(startUrls);
@@ -171,5 +147,4 @@ log.info('Final crawler statistics', {
 });
 
 // Gracefully exit the Actor
-// This ensures all data is saved and resources are cleaned up
 await Actor.exit();

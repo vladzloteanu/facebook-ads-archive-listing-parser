@@ -8,9 +8,7 @@
 	},
 	"dependencies": {
 		"apify": "^3.4.2",
-		"cheerio": "^1.0.0",
-		"crawlee": "^3.13.8",
-		"playwright": "^1.40.0"
+		"crawlee": "^3.13.8"
 	},
 	"devDependencies": {
 		"@apify/eslint-config": "^1.0.0",
