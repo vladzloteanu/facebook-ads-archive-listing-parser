@@ -17,9 +17,10 @@ if (!input) {
 
 const {
     startUrls = [],
-    maxConcurrency = 10,  // Higher default for faster completion
-    requestTimeout = 30000,  // Reduced from 60s to 30s
-    maxRetries = 2,  // Configurable retries (default 2 instead of 3)
+    maxConcurrency = 15,  // Higher concurrency for speed
+    requestTimeout = 20000,  // Aggressive: 20s timeout
+    maxRetries = 1,  // Minimal retries
+    proxyType = 'DEFAULT',  // DEFAULT proxy by default (cheaper)
 } = input;
 
 if (!Array.isArray(startUrls) || startUrls.length === 0) {
@@ -31,11 +32,10 @@ log.info('Actor configuration', {
     urlCount: startUrls.length,
     maxConcurrency,
     requestTimeout,
+    proxyType,
 });
 
-// Get proxy configuration from input (allows testing different proxy types)
-const { proxyType = 'RESIDENTIAL' } = input;
-
+// Get proxy configuration
 let proxyConfiguration = null;
 if (proxyType === 'RESIDENTIAL') {
     proxyConfiguration = await Actor.createProxyConfiguration({
@@ -56,12 +56,13 @@ log.info('Proxy configuration created', {
     proxyUrl: proxyConfiguration ? 'enabled' : 'disabled',
 });
 
-// Build crawler options - only include proxyConfiguration if set
+// Build crawler options - aggressively optimized for cost
 const crawlerOptions = {
     maxConcurrency,
     requestHandlerTimeoutSecs: requestTimeout / 1000,
     requestHandler: router,
     maxRequestRetries: maxRetries,
+    navigationTimeoutSecs: 15,  // Aggressive navigation timeout
 
     launchContext: {
         launchOptions: {
@@ -71,46 +72,70 @@ const crawlerOptions = {
                 '--disable-dev-shm-usage',
                 '--disable-extensions',
                 '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-background-networking',
+                '--disable-default-apps',
+                '--disable-sync',
+                '--disable-translate',
+                '--metrics-recording-only',
+                '--no-first-run',
+                '--safebrowsing-disable-auto-update',
+                '--disable-background-timer-throttling',
+                '--disable-client-side-phishing-detection',
+                '--disable-hang-monitor',
+                '--disable-popup-blocking',
+                '--disable-prompt-on-repost',
+                '--disable-domain-reliability',
+                '--disable-features=AudioServiceOutOfProcess,IsolateOrigins,site-per-process',
+                '--js-flags=--max-old-space-size=256',  // Limit JS memory
             ],
         },
     },
 
-    // Use persistent context for better performance
+    // Session pooling for browser reuse
     useSessionPool: true,
     sessionPoolOptions: {
         maxPoolSize: maxConcurrency,
+        sessionOptions: {
+            maxUsageCount: 50,  // Reuse session up to 50 times
+        },
     },
 
     preNavigationHooks: [
         async ({ page }) => {
-            // Smaller viewport to reduce memory
-            await page.setViewportSize({ width: 1024, height: 768 });
+            // Minimal viewport
+            await page.setViewportSize({ width: 800, height: 600 });
 
-            // Block unnecessary resources to reduce bandwidth
+            // Aggressive resource blocking
             await page.route('**/*', (route) => {
-                const resourceType = route.request().resourceType();
-                // Allow document, script, xhr, fetch - block images, fonts, stylesheets, media
-                if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) {
-                    route.abort();
-                } else {
-                    route.continue();
+                const request = route.request();
+                const resourceType = request.resourceType();
+                const url = request.url();
+
+                // Block everything except document, script, xhr, fetch
+                if (['image', 'stylesheet', 'font', 'media', 'websocket', 'manifest', 'other'].includes(resourceType)) {
+                    return route.abort();
                 }
+
+                // Block tracking and analytics scripts
+                if (url.includes('analytics') || url.includes('tracking') ||
+                    url.includes('pixel') || url.includes('beacon') ||
+                    url.includes('doubleclick') || url.includes('googletag')) {
+                    return route.abort();
+                }
+
+                return route.continue();
             });
         },
     ],
 
-    failedRequestHandler: async ({ request, error }, context) => {
-        log.error(`Request failed after ${request.retryCount} retries`, {
-            url: request.url,
-            error: error.message,
-            adId: request.url.match(/id=(\d+)/)?.[1],
-        });
-
+    failedRequestHandler: async ({ request, error }) => {
+        log.warning(`Request failed: ${request.url.match(/id=(\d+)/)?.[1]} - ${error.message}`);
         await Actor.pushData({
             status: 'FAILED',
             url: request.url,
+            ad_id: request.url.match(/id=(\d+)/)?.[1],
             error: error.message,
-            retryCount: request.retryCount,
             timestamp: new Date().toISOString(),
         });
     },
@@ -124,37 +149,21 @@ if (proxyConfiguration) {
 const crawler = new PlaywrightCrawler(crawlerOptions);
 
 const startTime = Date.now();
-
-log.info('Starting crawler...', {
-    totalUrls: startUrls.length,
-    startTime: new Date(startTime).toISOString(),
-});
+log.info(`Starting crawler with ${startUrls.length} URLs...`);
 
 try {
     await crawler.run(startUrls);
-
-    const endTime = Date.now();
-    const duration = (endTime - startTime) / 1000;
-
-    log.info('Crawler finished successfully', {
-        totalUrls: startUrls.length,
-        duration: `${duration.toFixed(2)}s`,
-        avgTimePerUrl: `${(duration / startUrls.length).toFixed(2)}s`,
-        endTime: new Date(endTime).toISOString(),
-    });
+    const duration = (Date.now() - startTime) / 1000;
+    log.info(`Finished in ${duration.toFixed(1)}s (${(duration / startUrls.length).toFixed(2)}s/URL)`);
 } catch (error) {
-    log.error('Crawler failed with error', {
-        error: error.message,
-        stack: error.stack,
-    });
+    log.error('Crawler failed', { error: error.message });
     throw error;
 }
 
 const stats = await crawler.stats.state;
-log.info('Final crawler statistics', {
-    requestsFinished: stats.requestsFinished,
-    requestsFailed: stats.requestsFailed,
-    retryHistogram: stats.retryHistogram,
+log.info('Stats', {
+    finished: stats.requestsFinished,
+    failed: stats.requestsFailed,
 });
 
 await Actor.exit();
