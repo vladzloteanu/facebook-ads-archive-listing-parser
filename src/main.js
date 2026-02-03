@@ -17,8 +17,9 @@ if (!input) {
 
 const {
     startUrls = [],
-    maxConcurrency = 3,
-    requestTimeout = 60000,
+    maxConcurrency = 10,  // Higher default for faster completion
+    requestTimeout = 30000,  // Reduced from 60s to 30s
+    maxRetries = 2,  // Configurable retries (default 2 instead of 3)
 } = input;
 
 if (!Array.isArray(startUrls) || startUrls.length === 0) {
@@ -60,17 +61,30 @@ const crawlerOptions = {
     maxConcurrency,
     requestHandlerTimeoutSecs: requestTimeout / 1000,
     requestHandler: router,
-    maxRequestRetries: 3,
+    maxRequestRetries: maxRetries,
 
     launchContext: {
         launchOptions: {
             headless: true,
+            args: [
+                '--disable-gpu',
+                '--disable-dev-shm-usage',
+                '--disable-extensions',
+                '--no-sandbox',
+            ],
         },
+    },
+
+    // Use persistent context for better performance
+    useSessionPool: true,
+    sessionPoolOptions: {
+        maxPoolSize: maxConcurrency,
     },
 
     preNavigationHooks: [
         async ({ page }) => {
-            await page.setViewportSize({ width: 1280, height: 800 });
+            // Smaller viewport to reduce memory
+            await page.setViewportSize({ width: 1024, height: 768 });
 
             // Block unnecessary resources to reduce bandwidth
             await page.route('**/*', (route) => {
