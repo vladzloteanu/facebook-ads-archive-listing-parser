@@ -32,11 +32,13 @@ log.info('Actor configuration', {
     requestTimeout,
 });
 
-// Configure proxy with default Apify proxy (auto-selects best option)
-const proxyConfiguration = await Actor.createProxyConfiguration();
+// Configure proxy with RESIDENTIAL proxies for best success rate
+const proxyConfiguration = await Actor.createProxyConfiguration({
+    groups: ['RESIDENTIAL'],
+});
 
 log.info('Proxy configuration created', {
-    proxyUrl: proxyConfiguration ? 'enabled (default)' : 'disabled',
+    proxyUrl: proxyConfiguration ? 'enabled (RESIDENTIAL)' : 'disabled',
 });
 
 const crawler = new PlaywrightCrawler({
