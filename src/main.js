@@ -32,13 +32,11 @@ log.info('Actor configuration', {
     requestTimeout,
 });
 
-// Configure proxy with DATACENTER proxies (cheaper than residential)
-const proxyConfiguration = await Actor.createProxyConfiguration({
-    groups: ['DATACENTER'],
-});
+// Configure proxy with default Apify proxy (auto-selects best option)
+const proxyConfiguration = await Actor.createProxyConfiguration();
 
 log.info('Proxy configuration created', {
-    proxyUrl: proxyConfiguration ? 'enabled (DATACENTER)' : 'disabled',
+    proxyUrl: proxyConfiguration ? 'enabled (default)' : 'disabled',
 });
 
 const crawler = new PlaywrightCrawler({
