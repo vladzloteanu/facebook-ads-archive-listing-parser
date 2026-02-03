@@ -1,7 +1,8 @@
 // Router for handling Facebook Ads Archive pages
-import { createCheerioRouter, Dataset, log } from 'crawlee';
+import { createPlaywrightRouter, Dataset, log } from 'crawlee';
+import * as cheerio from 'cheerio';
 
-export const router = createCheerioRouter();
+export const router = createPlaywrightRouter();
 
 /**
  * Default handler for Facebook Ads Archive URLs
@@ -15,7 +16,7 @@ export const router = createCheerioRouter();
  * - Library ID
  * - Sponsored status
  */
-router.addDefaultHandler(async ({ request, $, log: requestLog }) => {
+router.addDefaultHandler(async ({ request, page, log: requestLog }) => {
     requestLog.info(`Processing ad: ${request.url}`);
 
     // Initialize result object with basic information
@@ -38,9 +39,26 @@ router.addDefaultHandler(async ({ request, $, log: requestLog }) => {
             result.ad_id = null;
         }
 
-        // Get the full page HTML for regex-based extraction
-        // Facebook's ads archive includes JSON data in the HTML
-        const bodyHtml = $('body').html() || '';
+        // Wait for the page content to load
+        // Facebook loads content dynamically via JavaScript
+        requestLog.info('Waiting for page content to load...');
+
+        // Wait for either the video element, image, or a timeout
+        try {
+            await page.waitForSelector('video, img[src*="fbcdn"], [data-testid]', { timeout: 15000 });
+            requestLog.info('Content selector found');
+        } catch (e) {
+            requestLog.warning('Timeout waiting for content selector, proceeding anyway');
+        }
+
+        // Additional wait to ensure dynamic content is fully loaded
+        await page.waitForTimeout(2000);
+
+        // Get the full page HTML after JavaScript execution
+        const bodyHtml = await page.content();
+
+        // Load into Cheerio for easier parsing
+        const $ = cheerio.load(bodyHtml);
 
         // DEBUG: Log HTML structure info
         requestLog.info(`DEBUG: HTML length: ${bodyHtml.length} chars`);

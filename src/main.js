@@ -1,7 +1,7 @@
 // Apify SDK - toolkit for building Apify Actors (Read more at https://docs.apify.com/sdk/js/)
 import { Actor } from 'apify';
 // Crawlee - web scraping and browser automation library (Read more at https://crawlee.dev)
-import { CheerioCrawler, log } from 'crawlee';
+import { PlaywrightCrawler, log } from 'crawlee';
 import { router } from './routes.js';
 
 // Initialize the Actor environment
@@ -32,8 +32,8 @@ if (!input) {
 // Extract configuration with defaults
 const {
     startUrls = [],
-    maxConcurrency = 5,
-    requestTimeout = 30000,
+    maxConcurrency = 3,  // Lower default for browser-based crawling
+    requestTimeout = 60000,  // Longer timeout for JS rendering
 } = input;
 
 // Validate startUrls
@@ -58,24 +58,25 @@ for (const url of startUrls) {
 
 // Configure proxy to avoid rate limiting and blocking
 // Facebook may block requests without proper proxy rotation
-const proxyConfiguration = await Actor.createProxyConfiguration();
+const proxyConfiguration = await Actor.createProxyConfiguration({
+    groups: ['RESIDENTIAL'],
+});
 
 log.info('Proxy configuration created', {
-    proxyUrl: proxyConfiguration ? 'enabled' : 'disabled',
+    proxyUrl: proxyConfiguration ? 'enabled (residential)' : 'disabled',
 });
 
 /**
- * Initialize the CheerioCrawler
+ * Initialize the PlaywrightCrawler
  *
- * CheerioCrawler is faster than Playwright/Puppeteer for static content
- * as it doesn't require a full browser instance
+ * PlaywrightCrawler uses a real browser to execute JavaScript,
+ * which is required for Facebook's dynamically rendered ad content
  */
-const crawler = new CheerioCrawler({
+const crawler = new PlaywrightCrawler({
     // Use proxy to rotate IPs and avoid blocking
     proxyConfiguration,
 
-    // Maximum number of concurrent requests
-    // Higher = faster but more resource intensive
+    // Maximum number of concurrent browser pages
     maxConcurrency,
 
     // Timeout for each request in milliseconds
@@ -86,6 +87,21 @@ const crawler = new CheerioCrawler({
 
     // Retry failed requests up to 3 times with exponential backoff
     maxRequestRetries: 3,
+
+    // Browser launch options
+    launchContext: {
+        launchOptions: {
+            headless: true,
+        },
+    },
+
+    // Wait for content to load before processing
+    preNavigationHooks: [
+        async ({ page }) => {
+            // Set a realistic viewport
+            await page.setViewportSize({ width: 1280, height: 800 });
+        },
+    ],
 
     // Custom error handler for better logging
     failedRequestHandler: async ({ request, error }, context) => {
@@ -120,10 +136,11 @@ log.info('Starting crawler...', {
  *
  * The crawler will:
  * 1. Fetch each URL with proxy rotation
- * 2. Parse the HTML with Cheerio
- * 3. Extract ad data using routes.js
- * 4. Save results to Dataset
- * 5. Handle errors and retries automatically
+ * 2. Wait for JavaScript to render the content
+ * 3. Parse the HTML with Cheerio
+ * 4. Extract ad data using routes.js
+ * 5. Save results to Dataset
+ * 6. Handle errors and retries automatically
  */
 try {
     await crawler.run(startUrls);
