@@ -98,10 +98,20 @@ router.addDefaultHandler(async ({ request, $, log: requestLog }) => {
             requestLog.info(`Found video creative (src attr): ${result.creative_url}`);
         }
 
-        // Pattern 0b: Look for img src in the ad content area (not the 60x60 avatar)
-        // Uses data-testid attribute that Facebook uses for ad content containers
+        // Pattern 0b: Look for img inside clickable ad link (data-lynx-mode="hover")
+        // This is Facebook's current format for image ads as of Feb 2026
         if (!result.creative_url) {
-            const adContentImg = $('[data-testid="ad-content-body-video-container"] img, [data-testid="ad-content-body-image-container"] img, .x14ju556 img').first().attr('src');
+            const adLinkImg = $('a[data-lynx-mode="hover"] img[src*="fbcdn"]').first().attr('src');
+            if (adLinkImg && !adLinkImg.includes('60x60')) {
+                result.creative_url = adLinkImg;
+                result.ad_type = 'image';
+                requestLog.info(`Found image creative (lynx-mode link): ${result.creative_url}`);
+            }
+        }
+
+        // Pattern 0c: Look for img in ad content containers with data-testid
+        if (!result.creative_url) {
+            const adContentImg = $('[data-testid="ad-content-body-video-container"] img, [data-testid="ad-content-body-image-container"] img').first().attr('src');
             if (adContentImg && adContentImg.includes('fbcdn') && !adContentImg.includes('60x60')) {
                 result.creative_url = adContentImg;
                 result.ad_type = 'image';
