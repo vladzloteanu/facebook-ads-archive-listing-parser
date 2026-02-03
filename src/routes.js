@@ -20,24 +20,21 @@ router.addDefaultHandler(async ({ request, page, log: requestLog }) => {
             result.ad_id = null;
         }
 
-        // Wait for content to load
-        requestLog.info('Waiting for page content to load...');
+        // Wait for content to load (optimized - shorter timeout)
         try {
-            await page.waitForSelector('video, img[src*="fbcdn"], [data-testid]', { timeout: 15000 });
-            requestLog.info('Content selector found');
+            await page.waitForSelector('video, img[src*="fbcdn"], [data-testid]', { timeout: 10000 });
         } catch (e) {
             requestLog.warning('Timeout waiting for content selector, proceeding anyway');
         }
 
-        await page.waitForTimeout(2000);
+        // Short stabilization wait (reduced from 2000ms)
+        await page.waitForTimeout(500);
 
         const bodyHtml = await page.content();
         const $ = cheerio.load(bodyHtml);
 
-        // DEBUG logging
-        requestLog.info(`DEBUG: HTML length: ${bodyHtml.length} chars`);
-        requestLog.info(`DEBUG: video elements found: ${$('video').length}`);
-        requestLog.info(`DEBUG: img[src*="fbcdn"] elements: ${$('img[src*="fbcdn"]').length}`);
+        // DEBUG logging (only in verbose mode)
+        requestLog.debug(`HTML length: ${bodyHtml.length}, videos: ${$('video').length}, images: ${$('img[src*="fbcdn"]').length}`);
 
         // Extract advertiser name
         const advertiserName = $('a[href*="facebook.com/"] span').first().text().trim();
@@ -90,7 +87,6 @@ router.addDefaultHandler(async ({ request, page, log: requestLog }) => {
             result.creative_url = null;
             result.ad_type = 'unknown';
             requestLog.warning('Could not extract creative URL');
-            requestLog.info(`DEBUG: First 300 chars: ${bodyHtml.substring(0, 300)}`);
         }
 
         // Extract CTA URL

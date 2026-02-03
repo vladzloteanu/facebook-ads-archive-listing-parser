@@ -32,17 +32,31 @@ log.info('Actor configuration', {
     requestTimeout,
 });
 
-// Configure proxy with RESIDENTIAL proxies for best success rate
-const proxyConfiguration = await Actor.createProxyConfiguration({
-    groups: ['RESIDENTIAL'],
-});
+// Get proxy configuration from input (allows testing different proxy types)
+const { proxyType = 'RESIDENTIAL' } = input;
+
+let proxyConfiguration = null;
+if (proxyType === 'RESIDENTIAL') {
+    proxyConfiguration = await Actor.createProxyConfiguration({
+        groups: ['RESIDENTIAL'],
+    });
+} else if (proxyType === 'DATACENTER') {
+    proxyConfiguration = await Actor.createProxyConfiguration({
+        groups: ['DATACENTER'],
+    });
+} else if (proxyType === 'DEFAULT') {
+    proxyConfiguration = await Actor.createProxyConfiguration();
+} else if (proxyType === 'NONE') {
+    proxyConfiguration = null;
+}
 
 log.info('Proxy configuration created', {
-    proxyUrl: proxyConfiguration ? 'enabled (RESIDENTIAL)' : 'disabled',
+    proxyType,
+    proxyUrl: proxyConfiguration ? 'enabled' : 'disabled',
 });
 
-const crawler = new PlaywrightCrawler({
-    proxyConfiguration,
+// Build crawler options - only include proxyConfiguration if set
+const crawlerOptions = {
     maxConcurrency,
     requestHandlerTimeoutSecs: requestTimeout / 1000,
     requestHandler: router,
@@ -57,6 +71,17 @@ const crawler = new PlaywrightCrawler({
     preNavigationHooks: [
         async ({ page }) => {
             await page.setViewportSize({ width: 1280, height: 800 });
+
+            // Block unnecessary resources to reduce bandwidth
+            await page.route('**/*', (route) => {
+                const resourceType = route.request().resourceType();
+                // Allow document, script, xhr, fetch - block images, fonts, stylesheets, media
+                if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) {
+                    route.abort();
+                } else {
+                    route.continue();
+                }
+            });
         },
     ],
 
@@ -75,7 +100,14 @@ const crawler = new PlaywrightCrawler({
             timestamp: new Date().toISOString(),
         });
     },
-});
+};
+
+// Only add proxy if configured
+if (proxyConfiguration) {
+    crawlerOptions.proxyConfiguration = proxyConfiguration;
+}
+
+const crawler = new PlaywrightCrawler(crawlerOptions);
 
 const startTime = Date.now();
 
